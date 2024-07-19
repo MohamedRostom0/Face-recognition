@@ -11,6 +11,6 @@
 
 ### ICPOptimizer.h
 - Define the CeresOptimier class that optimizes the Energy under our constraints.
-  - PointToPlane constraint: Computes a weighted distance between a point in the Source model to the target plane defined by the target point and the normal of the target face model.
-  - PointToPoint: Sum of all the differences between source and target points.
+  - PointToPlaneConstraint class: Computes a weighted distance between a point in the Source model to the target plane defined by the target point and the normal of the target face model.
+  - PointToPointConstraint class: Sum of all the differences between source and target points.
   - Regularization: Sum of all shape and expression coefficients.
