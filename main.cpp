@@ -21,191 +21,41 @@
 #define RUN_SHAPE_ICP		0
 #define RUN_SEQUENCE_ICP	1
 
-// void debugCorrespondenceMatching() {
-// 	// Load the source and target mesh.
-// 	const std::string filenameSource = std::string("../../../Data/bunny_part2_trans.off");
-// 	const std::string filenameTarget = std::string("../../../Data/bunny_part1.off");
 
-// 	SimpleMesh sourceMesh;
-// 	if (!sourceMesh.loadMesh(filenameSource)) {
-// 		std::cout << "Mesh file wasn't read successfully." << std::endl;
-// 		return;
-// 	}
-
-// 	SimpleMesh targetMesh;
-// 	if (!targetMesh.loadMesh(filenameTarget)) {
-// 		std::cout << "Mesh file wasn't read successfully." << std::endl;
-// 		return;
-// 	}
-
-// 	PointCloud source{ sourceMesh };
-// 	PointCloud target{ targetMesh };
-	
-// 	// Search for matches using FLANN.
-// 	std::unique_ptr<NearestNeighborSearch> nearestNeighborSearch = std::make_unique<NearestNeighborSearchFlann>();
-// 	nearestNeighborSearch->setMatchingMaxDistance(0.0001f);
-// 	nearestNeighborSearch->buildIndex(target.getPoints());
-// 	auto matches = nearestNeighborSearch->queryMatches(source.getPoints());
-
-// 	// Visualize the correspondences with lines.
-// 	SimpleMesh resultingMesh = SimpleMesh::joinMeshes(sourceMesh, targetMesh, Matrix4f::Identity());
-// 	auto sourcePoints = source.getPoints();
-// 	auto targetPoints = target.getPoints();
-
-// 	for (unsigned i = 0; i < 100; ++i) { // sourcePoints.size()
-// 		const auto match = matches[i];
-// 		if (match.idx >= 0) {
-// 			const auto& sourcePoint = sourcePoints[i];
-// 			const auto& targetPoint = targetPoints[match.idx];
-// 			resultingMesh = SimpleMesh::joinMeshes(SimpleMesh::cylinder(sourcePoint, targetPoint, 0.002f, 2, 15), resultingMesh, Matrix4f::Identity());
-// 		}
-// 	}
-
-// 	resultingMesh.writeMesh(std::string("correspondences.off"));
-// }
-
-// int alignBunnyWithICP() {
-// 	// Load the source and target mesh.
-// 	const std::string filenameSource = std::string("../../Data/bunny_part2_trans.off");
-// 	const std::string filenameTarget = std::string("../../Data/bunny_part1.off");
-
-// 	SimpleMesh sourceMesh;
-// 	if (!sourceMesh.loadMesh(filenameSource)) {
-// 		std::cout << "Mesh file wasn't read successfully at location: " << filenameSource << std::endl;
-// 		return -1;
-// 	}
-
-// 	SimpleMesh targetMesh;
-// 	if (!targetMesh.loadMesh(filenameTarget)) {
-// 		std::cout << "Mesh file wasn't read successfully at location: " << filenameTarget << std::endl;
-// 		return -1;
-// 	}
-
-// 	// Estimate the pose from source to target mesh with ICP optimization.
-// 	ICPOptimizer* optimizer = nullptr;
-// 	if (USE_LINEAR_ICP) {
-// 		optimizer = new LinearICPOptimizer();
-// 	}
-// 	else {
-// 		optimizer = new CeresICPOptimizer();
-// 	}
-	
-// 	optimizer->setMatchingMaxDistance(0.0003f);
-// 	if (USE_POINT_TO_PLANE) {
-// 		optimizer->usePointToPlaneConstraints(true);
-// 		optimizer->setNbOfIterations(10);
-// 	}
-// 	else {
-// 		optimizer->usePointToPlaneConstraints(false);
-// 		optimizer->setNbOfIterations(20);
-// 	}
-
-// 	PointCloud source{ sourceMesh };
-// 	PointCloud target{ targetMesh };
-
-//     Matrix4f estimatedPose = Matrix4f::Identity();
-// 	optimizer->estimatePose(source, target, estimatedPose);
-	
-// 	// Visualize the resulting joined mesh. We add triangulated spheres for point matches.
-// 	SimpleMesh resultingMesh = SimpleMesh::joinMeshes(sourceMesh, targetMesh, estimatedPose);
-// 	if (SHOW_BUNNY_CORRESPONDENCES) {
-// 		for (const auto& sourcePoint : source.getPoints()) {
-// 			resultingMesh = SimpleMesh::joinMeshes(SimpleMesh::sphere(sourcePoint, 0.001f), resultingMesh, estimatedPose);
-// 		}
-// 		for (const auto& targetPoint : target.getPoints()) {
-// 			resultingMesh = SimpleMesh::joinMeshes(SimpleMesh::sphere(targetPoint, 0.001f, Vector4uc(255, 255, 255, 255)), resultingMesh, Matrix4f::Identity());
-// 		}
-// 	}
-// 	resultingMesh.writeMesh(std::string("bunny_icp.off"));
-// 	std::cout << "Resulting mesh written." << std::endl;
-
-// 	delete optimizer;
-
-// 	return 0;
-// }
-
-// int reconstructRoom() {
-// 	std::string filenameIn = std::string("../../Data/rgbd_dataset_freiburg1_xyz/");
-// 	std::string filenameBaseOut = std::string("mesh_");
-
-// 	// Load video
-// 	std::cout << "Initialize virtual sensor..." << std::endl;
-// 	VirtualSensor sensor;
-// 	if (!sensor.init(filenameIn)) {
-// 		std::cout << "Failed to initialize the sensor!\nCheck file path!" << std::endl;
-// 		return -1;
-// 	}
-
-// 	// We store a first frame as a reference frame. All next frames are tracked relatively to the first frame.
-// 	sensor.processNextFrame();
-// 	PointCloud target{ sensor.getDepth(), sensor.getDepthIntrinsics(), sensor.getDepthExtrinsics(), sensor.getDepthImageWidth(), sensor.getDepthImageHeight() };
-	
-// 	// Setup the optimizer.
-// 	ICPOptimizer* optimizer = nullptr;
-// 	if (USE_LINEAR_ICP) {
-// 		optimizer = new LinearICPOptimizer();
-// 	}
-// 	else {
-// 		optimizer = new CeresICPOptimizer();
-// 	}
-
-// 	optimizer->setMatchingMaxDistance(0.1f);
-// 	if (USE_POINT_TO_PLANE) {
-// 		optimizer->usePointToPlaneConstraints(true);
-// 		optimizer->setNbOfIterations(10);
-// 	}
-// 	else {
-// 		optimizer->usePointToPlaneConstraints(false);
-// 		optimizer->setNbOfIterations(20);
-// 	}
-
-// 	// We store the estimated camera poses.
-// 	std::vector<Matrix4f> estimatedPoses;
-// 	Matrix4f currentCameraToWorld = Matrix4f::Identity();
-// 	estimatedPoses.push_back(currentCameraToWorld.inverse());
-
-// 	int i = 0;
-// 	const int iMax = 22;
-// 	while (sensor.processNextFrame() && i <= iMax) {
-// 		float* depthMap = sensor.getDepth();
-// 		Matrix3f depthIntrinsics = sensor.getDepthIntrinsics();
-// 		Matrix4f depthExtrinsics = sensor.getDepthExtrinsics();
-
-// 		// Estimate the current camera pose from source to target mesh with ICP optimization.
-// 		// We downsample the source image to speed up the correspondence matching.
-// 		PointCloud source{ sensor.getDepth(), sensor.getDepthIntrinsics(), sensor.getDepthExtrinsics(), sensor.getDepthImageWidth(), sensor.getDepthImageHeight(), 8 };
-// 		optimizer->estimatePose(source, target, currentCameraToWorld);
-		
-// 		// Invert the transformation matrix to get the current camera pose.
-// 		Matrix4f currentCameraPose = currentCameraToWorld.inverse();
-// 		std::cout << "Current camera pose: " << std::endl << currentCameraPose << std::endl;
-// 		estimatedPoses.push_back(currentCameraPose);
-
-// 		if (i % 5 == 0) {
-// 			// We write out the mesh to file for debugging.
-// 			SimpleMesh currentDepthMesh{ sensor, currentCameraPose, 0.1f };
-// 			SimpleMesh currentCameraMesh = SimpleMesh::camera(currentCameraPose, 0.0015f);
-// 			SimpleMesh resultingMesh = SimpleMesh::joinMeshes(currentDepthMesh, currentCameraMesh, Matrix4f::Identity());
-
-// 			std::stringstream ss;
-// 			ss << filenameBaseOut << sensor.getCurrentFrameCnt() << ".off";
-// 			std::cout << filenameBaseOut << sensor.getCurrentFrameCnt() << ".off" << std::endl;
-// 			if (!resultingMesh.writeMesh(ss.str())) {
-// 				std::cout << "Failed to write mesh!\nCheck file path!" << std::endl;
-// 				return -1;
-// 			}
-// 		}
-		
-// 		i++;
-// 	}
-
-// 	delete optimizer;
-
-// 	return 0;
-// }
+void transferExpression(const FaceModel& face1, FaceModel& face2) {
+    Eigen::VectorXd expCoef = face1.getExpressionCoefficients();
+    face2.setExpressionCoefficients(expCoef);
+    face2.write_off("output.off", face2.getAsEigenMatrix(face2.get_mesh()));
+}
 
 int main() {
 
+    FaceModel* face1 = FaceModel::getInstance();
+    face1->load("face_1.dat");
+
+    FaceModel* face2 = FaceModel::getInstance();
+    face2->load("face_2.dat");
+
+    Eigen::VectorXd expCoefFace1 = face1->getExpressionCoefficients();
+    face2->setExpressionCoefficients(expCoefFace1);
+
+    // Generate the updated mesh for face2
+    double* updatedMeshFace2 = face2->get_mesh();
+    Eigen::MatrixXd updatedMesh = face2->getAsEigenMatrix(updatedMeshFace2);
+
+    // Save the updated mesh to an OBJ file
+    face2->write_off("face2_updated.off", updatedMesh);
+    // Transfer expressions from face1 to face2
+    // Eigen::VectorXd expCoefFace1 = face1->getExpressionCoefficients();
+    // face2->setExpressionCoefficients(expCoefFace1);
+    // face2->write_off("output.off");
+
+    // MatrixXd transformed_mesh0;
+    // transformed_mesh0 = face2->transform(face1->pose, face1->scale);
+    
+    // face2->write_off("output.off",transformed_mesh0);
+
+    return 0;
 
 	FaceModel* model = FaceModel::getInstance();
 
@@ -290,7 +140,22 @@ int main() {
     {389, 306}, {383, 306}, {377, 306}, {373, 301}, {366, 297}, {379, 299}, {383, 301}, {389, 299}, 
     {404, 297}, {389, 299}, {383, 299}, {379, 297}
 };
-
+// std::vector<std::pair<int, int>> keypoints_2d = {
+//         {544, 344}, {544, 357}, {545, 366}, {547, 375}, {550, 388},
+//         {555, 395}, {561, 400}, {567, 405}, {581, 409}, {595, 408},
+//         {606, 403}, {614, 398}, {621, 391}, {626, 380}, {628, 371},
+//         {631, 360}, {634, 349}, {550, 333}, {555, 332}, {561, 330},
+//         {565, 330}, {572, 332}, {593, 333}, {600, 332}, {606, 332},
+//         {612, 333}, {618, 336}, {581, 346}, {581, 353}, {579, 360},
+//         {579, 366}, {573, 369}, {576, 371}, {581, 372}, {586, 371},
+//         {589, 369}, {558, 343}, {561, 341}, {567, 341}, {572, 344},
+//         {567, 346}, {562, 346}, {593, 346}, {598, 343}, {604, 344},
+//         {609, 346}, {604, 347}, {598, 347}, {564, 380}, {569, 378},
+//         {576, 377}, {581, 378}, {586, 378}, {595, 378}, {603, 381},
+//         {593, 388}, {587, 391}, {579, 392}, {575, 391}, {570, 388},
+//         {565, 380}, {575, 380}, {581, 381}, {587, 381}, {601, 381},
+//         {587, 386}, {579, 386}, {575, 386}
+//     };
 	pcl::PointCloud<pcl::PointXYZ> cloud;
 
     if (pcl::io::loadPCDFile<pcl::PointXYZ>("../data/cloud_1.pcd", cloud) == -1) // Load the file
@@ -408,14 +273,14 @@ int main() {
         sourcePoints[ind] = scale * sourcePoints[ind] ;
     }
 
-	// std::vector<Vector3f> sp_deneme ;
-    // sp_deneme.push_back(sourcePoints[0]);sp_deneme.push_back(sourcePoints[16]);sp_deneme.push_back(sourcePoints[27]);sp_deneme.push_back(sourcePoints[8]) ;
+	std::vector<Vector3f> sp_deneme ;
+    sp_deneme.push_back(sourcePoints[0]);sp_deneme.push_back(sourcePoints[16]);sp_deneme.push_back(sourcePoints[27]);sp_deneme.push_back(sourcePoints[8]) ;
 
-    // std::vector<Vector3f> tp_deneme ;
-    // tp_deneme.push_back(targetPoints[0]);tp_deneme.push_back(targetPoints[16]);tp_deneme.push_back(targetPoints[27]);tp_deneme.push_back(targetPoints[8]); ;
+    std::vector<Vector3f> tp_deneme ;
+    tp_deneme.push_back(targetPoints[0]);tp_deneme.push_back(targetPoints[16]);tp_deneme.push_back(targetPoints[27]);tp_deneme.push_back(targetPoints[8]); ;
 
     ProcrustesAligner aligner;
-	Matrix4f estimatedPose = aligner.estimatePose(sourcePoints, targetPoints);
+	Matrix4f estimatedPose = aligner.estimatePose(sp_deneme, tp_deneme);
 	
 	Matrix4d estimatedPoseD = estimatedPose.cast<double>();
     std::cout << estimatedPoseD << std::endl;
@@ -470,7 +335,7 @@ int main() {
     optimizer = new CeresICPOptimizer();
     
     optimizer->setMatchingMaxDistance(0.000005f);
-    optimizer->setNbOfIterations(10);
+    optimizer->setNbOfIterations(5);
     optimizer->estimateExpShapeCoeffs(cropped_cloud);
 
 	

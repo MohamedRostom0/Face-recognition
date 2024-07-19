@@ -69,9 +69,6 @@ private:
 			// std::cout << "==> " << p.x() << "," << p.y() << "," << p.z() << " And " << m_points[i].x() << "," << m_points[i].y() << "," << m_points[i].z() << " = " << dist << std::endl;
 		}
 
-		// std::cout << minDist << std::endl;
-		// return Match{ idx, 1.f };
-		// return Match{ idx, 1.f };
 		if (minDist <= 0.02f)
 			return Match{ idx, 1.f };
 		else

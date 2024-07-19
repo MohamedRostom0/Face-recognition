@@ -1,6 +1,7 @@
 #include <iostream>
 #include <fstream>
 #include <vector>
+#include "SimpleMesh.h"
 
 #pragma once
 
@@ -251,6 +252,26 @@ public:
         return result;
     }
 
+    void setVerticesFromSimpleMesh(const SimpleMesh& mesh) {
+        std::cout << "inside setVerticies" << std::endl;
+        const auto& vertices = mesh.getVertices();
+        for (int i = 0; i < vertices.size(); ++i) {
+            meanshape(i, 0) = vertices[i].position.x();
+            meanshape(i, 1) = vertices[i].position.y();
+            meanshape(i, 2) = vertices[i].position.z();
+        }
+    }
+
+    Eigen::VectorXd getExpressionCoefficients() const {
+        return Eigen::VectorXd::Map(expCoefAr, 64);
+    }
+
+    void setExpressionCoefficients(const Eigen::VectorXd& newExpCoef) {
+        for (int i = 0; i < 64; i++) {
+            expCoefAr[i] = newExpCoef[i];
+        }
+    }
+
     void write_off(std::string filename) {
         std::cout << "Writing mesh...\n";
         std::ofstream file;
@@ -308,6 +329,104 @@ public:
     }
 }
 
+    void save(const std::string &filename) {
+        std::ofstream file(filename, std::ios::binary);
+        if (!file.is_open()) {
+            throw std::runtime_error("Unable to open file for saving.");
+        }
+
+        // Save idBase
+        int rows = idBase.rows();
+        int cols = idBase.cols();
+        file.write(reinterpret_cast<const char *>(&rows), sizeof(rows));
+        file.write(reinterpret_cast<const char *>(&cols), sizeof(cols));
+        file.write(reinterpret_cast<const char *>(idBase.data()), rows * cols * sizeof(double));
+
+        // Save expBase
+        rows = expBase.rows();
+        cols = expBase.cols();
+        file.write(reinterpret_cast<const char *>(&rows), sizeof(rows));
+        file.write(reinterpret_cast<const char *>(&cols), sizeof(cols));
+        file.write(reinterpret_cast<const char *>(expBase.data()), rows * cols * sizeof(double));
+
+        // Save meanshape
+        rows = meanshape.rows();
+        cols = meanshape.cols();
+        file.write(reinterpret_cast<const char *>(&rows), sizeof(rows));
+        file.write(reinterpret_cast<const char *>(&cols), sizeof(cols));
+        file.write(reinterpret_cast<const char *>(meanshape.data()), rows * cols * sizeof(double));
+
+        // Save key_points
+        size_t size = key_points.size();
+        file.write(reinterpret_cast<const char *>(&size), sizeof(size));
+        file.write(reinterpret_cast<const char *>(key_points.data()), size * sizeof(unsigned int));
+
+        // Save m_triangles
+        size = m_triangles.size();
+        file.write(reinterpret_cast<const char *>(&size), sizeof(size));
+        file.write(reinterpret_cast<const char *>(m_triangles.data()), size * sizeof(Triangle));
+
+        // Save coefficients
+        file.write(reinterpret_cast<const char *>(shapeCoefAr), 80 * sizeof(double));
+        file.write(reinterpret_cast<const char *>(expCoefAr), 64 * sizeof(double));
+
+        // Save transformation data
+        file.write(reinterpret_cast<const char *>(rotation.data()), 9 * sizeof(double));
+        file.write(reinterpret_cast<const char *>(translation.data()), 3 * sizeof(double));
+        file.write(reinterpret_cast<const char *>(pose.data()), 16 * sizeof(double));
+        file.write(reinterpret_cast<const char *>(&scale), sizeof(double));
+
+        file.close();
+    }
+
+    void load(const std::string &filename) {
+        std::ifstream file(filename, std::ios::binary);
+        if (!file.is_open()) {
+            throw std::runtime_error("Unable to open file for loading.");
+        }
+
+        // Load idBase
+        int rows, cols;
+        file.read(reinterpret_cast<char *>(&rows), sizeof(rows));
+        file.read(reinterpret_cast<char *>(&cols), sizeof(cols));
+        idBase.resize(rows, cols);
+        file.read(reinterpret_cast<char *>(idBase.data()), rows * cols * sizeof(double));
+
+        // Load expBase
+        file.read(reinterpret_cast<char *>(&rows), sizeof(rows));
+        file.read(reinterpret_cast<char *>(&cols), sizeof(cols));
+        expBase.resize(rows, cols);
+        file.read(reinterpret_cast<char *>(expBase.data()), rows * cols * sizeof(double));
+
+        // Load meanshape
+        file.read(reinterpret_cast<char *>(&rows), sizeof(rows));
+        file.read(reinterpret_cast<char *>(&cols), sizeof(cols));
+        meanshape.resize(rows, cols);
+        file.read(reinterpret_cast<char *>(meanshape.data()), rows * cols * sizeof(double));
+
+        // Load key_points
+        size_t size;
+        file.read(reinterpret_cast<char *>(&size), sizeof(size));
+        key_points.resize(size);
+        file.read(reinterpret_cast<char *>(key_points.data()), size * sizeof(unsigned int));
+
+        // Load m_triangles
+        file.read(reinterpret_cast<char *>(&size), sizeof(size));
+        m_triangles.resize(size);
+        file.read(reinterpret_cast<char *>(m_triangles.data()), size * sizeof(Triangle));
+
+        // Load coefficients
+        file.read(reinterpret_cast<char *>(shapeCoefAr), 80 * sizeof(double));
+        file.read(reinterpret_cast<char *>(expCoefAr), 64 * sizeof(double));
+
+        // Load transformation data
+        file.read(reinterpret_cast<char *>(rotation.data()), 9 * sizeof(double));
+        file.read(reinterpret_cast<char *>(translation.data()), 3 * sizeof(double));
+        file.read(reinterpret_cast<char *>(pose.data()), 16 * sizeof(double));
+        file.read(reinterpret_cast<char *>(&scale), sizeof(double));
+
+        file.close();
+    }
 
 
 public:
