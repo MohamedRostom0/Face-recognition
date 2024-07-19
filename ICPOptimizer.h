@@ -15,192 +15,6 @@ using namespace std;
 #include "ProcrustesAligner.h"
 #include "FaceModel.h"
 
-#define SHAPE_REGULARIZATION_WEIGHT 0.000001
-#define EXPRESSION_REGULARIZATION_WEIGHT 0.0000005
-
-#define TRANSFER   0
-struct ShapeCostFunction
-{
-	ShapeCostFunction(double weight_)
-		: weight{ weight_ }
-	{}
-
-	template<typename T>
-	bool operator()(T const* shape_weights, T* residuals) const
-	{
-
-		for (int i = 0; i < 80; i++) {
-			residuals[i] = shape_weights[i] * T(sqrt(weight));
-		}
-		return true;
-	}
-
-private:
-	const double weight;
-};
-struct ExpressionCostFunction
-{
-	ExpressionCostFunction(double weight_)
-		: weight{weight_}
-	{}
-
-	template<typename T>
-	bool operator()(T const* exp_weights, T* residuals) const
-	{
-		for (int j = 0; j < 64; j++) {
-			residuals[j] = exp_weights[j] * T(sqrt(weight));
-		}
-		return true;
-	}
-
-private:
-	const double weight;
-};
-
-/**
- * Pose increment is only an interface to the underlying array (in constructor, no copy
- * of the input array is made).
- * Important: Input array needs to have a size of at least 6.
- */
-template <typename T>
-class PoseIncrement {
-public:
-    explicit PoseIncrement(T* const array) : m_array{ array } { }
-
-    void setZero() {
-        for (int i = 0; i < 6; ++i)
-            m_array[i] = T(0);
-    }
-
-    T* getData() const {
-        return m_array;
-    }
-
-    /**
-     * Applies the pose increment onto the input point and produces transformed output point.
-     * Important: The memory for both 3D points (input and output) needs to be reserved (i.e. on the stack)
-     * beforehand).
-     */
-    void apply(T* inputPoint, T* outputPoint) const {
-        // pose[0,1,2] is angle-axis rotation.
-        // pose[3,4,5] is translation.
-        const T* rotation = m_array;
-        const T* translation = m_array + 3;
-
-        T temp[3];
-        ceres::AngleAxisRotatePoint(rotation, inputPoint, temp);
-
-        outputPoint[0] = temp[0] * m_scale+ translation[0];
-        outputPoint[1] = temp[1] * m_scale+ translation[1];
-        outputPoint[2] = temp[2] * m_scale+ translation[2];
-    }
-
-    /**
-     * Converts the pose increment with rotation in SO3 notation and translation as 3D vector into
-     * transformation 4x4 matrix.
-     */
-    static Matrix4d convertToMatrix(const PoseIncrement<double>& poseIncrement) {
-        // pose[0,1,2] is angle-axis rotation.
-        // pose[3,4,5] is translation.
-        double* pose = poseIncrement.getData();
-        double* rotation = pose;
-        double* translation = pose + 3;
-
-        // Convert the rotation from SO3 to matrix notation (with column-major storage).
-        double rotationMatrix[9];
-        ceres::AngleAxisToRotationMatrix(rotation, rotationMatrix);
-
-        // Create the 4x4 transformation matrix.
-        Matrix4d matrix;
-        matrix.setIdentity();
-        matrix(0, 0) = double(rotationMatrix[0]);	matrix(0, 1) = double(rotationMatrix[3]);	matrix(0, 2) = double(rotationMatrix[6]);	matrix(0, 3) = double(translation[0]);
-        matrix(1, 0) = double(rotationMatrix[1]);	matrix(1, 1) = double(rotationMatrix[4]);	matrix(1, 2) = double(rotationMatrix[7]);	matrix(1, 3) = double(translation[1]);
-        matrix(2, 0) = double(rotationMatrix[2]);	matrix(2, 1) = double(rotationMatrix[5]);	matrix(2, 2) = double(rotationMatrix[8]);	matrix(2, 3) = double(translation[2]);
-
-        return matrix;
-    }
-
-    void init(Matrix4d pose, double scale) {
-
-        double rotationMatrix[9];
-        double* rotation;
-
-        rotationMatrix[0] = pose(0,0); rotationMatrix[1] = pose(0,1); rotationMatrix[2] = pose(0,2);
-        rotationMatrix[3] = pose(1,0); rotationMatrix[4] = pose(1,1); rotationMatrix[5] = pose(1,2);
-        rotationMatrix[6] = pose(2,0); rotationMatrix[7] = pose(2,1); rotationMatrix[8] = pose(2,2);
-        ceres::RotationMatrixToAngleAxis(rotationMatrix, rotation);
-        cout << "iç\t" << rotation[0] <<  rotation[1]<< rotation[2] << endl;
-        m_array[0] = T(rotation[0]); m_array[1] = T(rotation[1]); m_array[2] = T(rotation[2]);
-        cout << "iç2" << endl;
-        m_scale = T(scale);
-        cout << "iç3" << endl;
-
-    }
-
-private:
-    T* m_array;
-    T m_scale;
-};
-
-template <typename T>
-static inline void dotFace_ceres(int pointIndex, const T* expCoef, const T* shapeCoef, T* face) {
-    FaceModel* faceModel = FaceModel::getInstance();
-
-    // T* expression =  new T[3];
-    // T* shape = new T[3];
-
-    // T* pointVertex = new T[3];
-
-    T expression[3];
-    T shape[3];
-    T pointVertex[3];
-
-    for (int i = 0; i < 3; i++) {
-        T sum = T(0.0);
-        for (int j = 0; j < 64; j++) {
-            sum += faceModel->expBaseAr[pointIndex*3 + i][j] * expCoef[j];
-        }
-        expression[i] = T(sum);
-    }
-
-    for (int i = 0; i < 3; i++) {
-        T sum = T(0.0);
-        for (int j = 0; j < 80; j++) {
-            sum += faceModel->idBaseAr[pointIndex*3 + i][j] * shapeCoef[j];
-        }
-        shape[i] = T(sum);
-    }
-
-    for (int i = 0; i < 3; i++) {
-        pointVertex[i] = expression[i] + shape[i] + faceModel->meanshapeAr[pointIndex*3 + i];
-        //face[i] = expression[i] + shape[i] + faceModel->meanshapeAr[pointIndex*3 + i];
-    }
-
-    //apply scale
-    for (int i = 0; i < 3; i++) {
-        pointVertex[i] = pointVertex[i] * T(faceModel->scale);
-    }
-
-    //apply rotation
-    for (int i = 0; i < 3; i++) {
-        T sum = T(0.0);
-        for (int j = 0; j < 3; j++) {
-            sum += pointVertex[j] * faceModel->rotation(i,j);
-        }
-        face[i] = T(sum);
-    }
- 
-    //apply translation
-    for (int i = 0; i < 3; i++) {
-        face[i] += T(faceModel->translation(i));
-    }
-
-    // delete [] expression;
-    // delete [] shape;
-    // delete [] pointVertex;
-
-}
-
 
 template <typename T>
 class ExpShapeCoeffIncrement {
@@ -231,7 +45,50 @@ public:
         const T* shapeCoef = m_arrayShapeCoef;
         T* faces = new T[3];
 
-        dotFace_ceres(inputIndex, expCoef, shapeCoef, faces);
+        FaceModel* faceModel = FaceModel::getInstance();
+
+        T expression[3];
+        T shape[3];
+        T pointVertex[3];
+
+        for (int i = 0; i < 3; i++) {
+            T sum = T(0.0);
+            for (int j = 0; j < 64; j++) {
+                sum += faceModel->expBaseAr[inputIndex*3 + i][j] * expCoef[j];
+            }
+            expression[i] = T(sum); // dot product expression
+        }
+
+        for (int i = 0; i < 3; i++) {
+            T sum = T(0.0);
+            for (int j = 0; j < 80; j++) {
+                sum += faceModel->idBaseAr[inputIndex*3 + i][j] * shapeCoef[j];
+            }
+            shape[i] = T(sum); // dot product shape
+        }
+
+        for (int i = 0; i < 3; i++) {
+            pointVertex[i] = expression[i] + shape[i] + faceModel->meanshapeAr[inputIndex*3 + i]; // change face params by (exp + shape)
+        }
+
+        //apply scale
+        for (int i = 0; i < 3; i++) {
+            pointVertex[i] = pointVertex[i] * T(faceModel->scale);
+        }
+
+        //apply rotation
+        for (int i = 0; i < 3; i++) {
+            T sum = T(0.0);
+            for (int j = 0; j < 3; j++) {
+                sum += pointVertex[j] * faceModel->rotation(i,j);
+            }
+            faces[i] = T(sum);
+        }
+    
+        //apply translation
+        for (int i = 0; i < 3; i++) {
+            faces[i] += T(faceModel->translation(i));
+        }
 
         outputPoint[0] = faces[0];
         outputPoint[1] = faces[1];
@@ -239,75 +96,53 @@ public:
 
         delete [] faces;
     }
-    /*int writeExpCoeff(){
-        std::ofstream out("../sample_face/expression", ios::out | ios::binary);
-        if(!out) {
-            cout << "Cannot open file.";
-            return 1;
-        }
-        out.write((char *) m_arrayExpCoef, sizeof m_arrayExpCoef);
-        out.close();
-    } */
-
-    
-    void writeExp(){
-        std::ofstream myfile;
-        myfile.open ("../sample_face/expression.csv");
-        for(int i=0 ; i<64 ; i++){
-            myfile << std::to_string(m_arrayExpCoef[i])+"\n";
-        }
-        myfile.close();
-    }
-    
-
-    void readExp() {
-
-        std::string line;
-        std::ifstream file("../sample_face/expression.csv");
-        std::string value;
-
-        int ind=0;
-        while (getline(file, line)) {
-
-            std::stringstream lineStringStream(line);
-
-            while (std::getline(lineStringStream, value, ','))
-            {
-                std::cout<<value<<std::endl;
-                m_arrayExpCoef[ind]=stod(value);
-                ind++;
-            }
-        }
-    }
-
-    /*void readExpCoeff(){
-        std::ifstream in("../sample_face/expression", ios::in | ios::binary);
-        //std::cout<<"lel"<<std::endl;
-        //std::cout<<sizeof m_arrayExpCoef<<std::endl;
-        double* new_exp = new double [64];
-        
-        in.read((char *) new_exp, 64);//sizeof m_arrayExpCoef);
-        std::cout<<"-----------------------------------"<<std::endl;
-        in.close();
-        int diff=0;
-        for(int i=0 ; i<64 ; i++){
-            if(m_arrayExpCoef[i]!=new_exp[i]) diff++;
-        }
-        std::cout<<diff<<std::endl;
-        m_arrayExpCoef = new_exp ;
-        
-    }*/
-
 
 private:
     T* m_arrayExpCoef;
     T* m_arrayShapeCoef;
 };
 
+struct ShapeCostFunction
+{
+	ShapeCostFunction(double weight_)
+		: weight{ weight_ }
+	{}
 
-class MyCustomConstraint {
+	template<typename T>
+	bool operator()(T const* shape_weights, T* residuals) const
+	{
+
+		for (int i = 0; i < 80; i++) {
+			residuals[i] = shape_weights[i] * T(weight);
+		}
+		return true;
+	}
+
+private:
+	const double weight;
+};
+struct ExpressionCostFunction
+{
+	ExpressionCostFunction(double weight_)
+		: weight{weight_}
+	{}
+
+	template<typename T>
+	bool operator()(T const* exp_weights, T* residuals) const
+	{
+		for (int j = 0; j < 64; j++) {
+			residuals[j] = exp_weights[j] * T(weight);
+		}
+		return true;
+	}
+
+private:
+	const double weight;
+};
+
+class PointToPointConstraint {
 public:
-    MyCustomConstraint(const int sourcePointIndex, const Vector3f& targetPoint, const float weight) :
+    PointToPointConstraint(const int sourcePointIndex, const Vector3f& targetPoint, const float weight) :
             m_sourcePointIndex{ sourcePointIndex },
             m_targetPoint{ targetPoint },
             m_weight{ weight }
@@ -316,18 +151,25 @@ public:
     template <typename T>
     bool operator()(const T* const expCoeff, const T* const shapeCoeff, T* residuals) const {
         auto expShapeCoeffIncrement = ExpShapeCoeffIncrement<T>(const_cast<T*>(expCoeff), const_cast<T*>(shapeCoeff));
-        T p_s_tilda[3];
-        expShapeCoeffIncrement.apply(m_sourcePointIndex, p_s_tilda);
-        residuals[0] = T(LAMBDA) * T(m_weight) * (p_s_tilda[0] - T(m_targetPoint[0]));
-        residuals[1] = T(LAMBDA) * T(m_weight) * (p_s_tilda[1] - T(m_targetPoint[1]));
-        residuals[2] = T(LAMBDA) * T(m_weight) * (p_s_tilda[2] - T(m_targetPoint[2]));
+        
+        T transformedPoint[3];
+        expShapeCoeffIncrement.apply(m_sourcePointIndex, transformedPoint);
+
+        T delta[3];
+        delta[0] = transformedPoint[0] - T(m_targetPoint[0]);
+        delta[1] = transformedPoint[1] - T(m_targetPoint[1]);
+        delta[2] = transformedPoint[2] - T(m_targetPoint[2]);
+        
+        residuals[0] = T(LAMBDA) * T(m_weight) * delta[0];
+        residuals[1] = T(LAMBDA) * T(m_weight) * delta[1];
+        residuals[2] = T(LAMBDA) * T(m_weight) * delta[2];
 
         return true;
     }
 
     static ceres::CostFunction* create(const int sourcePointIndex, const Vector3f& targetPoint, const float weight) {
-        return new ceres::AutoDiffCostFunction<MyCustomConstraint, 3, 64, 80>(
-                new MyCustomConstraint(sourcePointIndex, targetPoint, weight)
+        return new ceres::AutoDiffCostFunction<PointToPointConstraint, 3, 64, 80>(
+                new PointToPointConstraint(sourcePointIndex, targetPoint, weight)
         );
     }
 
@@ -338,9 +180,9 @@ protected:
     const float LAMBDA = 0.1f;
 };
 
-class PointToPlaneConstr {
+class PointToPlaneConstraint {
 public:
-    PointToPlaneConstr(const int sourcePointIndex, const Vector3f& targetPoint, const Vector3f& targetNormal, const float weight) :
+    PointToPlaneConstraint(const int sourcePointIndex, const Vector3f& targetPoint, const Vector3f& targetNormal, const float weight) :
             m_sourcePointIndex{ sourcePointIndex },
             m_targetPoint{ targetPoint },
             m_targetNormal{ targetNormal },
@@ -350,19 +192,25 @@ public:
     template <typename T>
     bool operator()(const T* const expCoeff, const T* const shapeCoeff, T* residuals) const {
         auto expShapeCoeffIncrement = ExpShapeCoeffIncrement<T>(const_cast<T*>(expCoeff), const_cast<T*>(shapeCoeff));
-        T p_s_tilda[3];
-        expShapeCoeffIncrement.apply(m_sourcePointIndex, p_s_tilda);
+        
+        T transformedSource[3];
+        expShapeCoeffIncrement.apply(m_sourcePointIndex, transformedSource);
 
-        residuals[0] = T(LAMBDA) * T(m_weight) * T(m_targetNormal[0]) * (p_s_tilda[0] - T(m_targetPoint[0]));
-        residuals[0] += T(LAMBDA) * T(m_weight) * T(m_targetNormal[1]) * (p_s_tilda[1] - T(m_targetPoint[1]));
-        residuals[0] += T(LAMBDA) * T(m_weight) * T(m_targetNormal[2]) * (p_s_tilda[2] - T(m_targetPoint[2]));
+        T delta[3];
+        delta[0] = transformedSource[0] - T(m_targetPoint[0]);
+        delta[1] = transformedSource[1] - T(m_targetPoint[1]);
+        delta[2] = transformedSource[2] - T(m_targetPoint[2]);
+        
+        residuals[0] = (T(LAMBDA) * T(m_weight) * T(m_targetNormal[0]) * delta[0]);
+        residuals[0] += (T(LAMBDA) * T(m_weight) * T(m_targetNormal[1]) * delta[1]);
+        residuals[0] += (T(LAMBDA) * T(m_weight) * T(m_targetNormal[2]) * delta[2]);
 
         return true;
     }
 
     static ceres::CostFunction* create(const int sourcePointIndex, const Vector3f& targetPoint, const Vector3f& targetNormal, const float weight) {
-        return new ceres::AutoDiffCostFunction<PointToPlaneConstr, 1, 64, 80>(
-                new PointToPlaneConstr(sourcePointIndex, targetPoint, targetNormal, weight)
+        return new ceres::AutoDiffCostFunction<PointToPlaneConstraint, 1, 64, 80>(
+                new PointToPlaneConstraint(sourcePointIndex, targetPoint, targetNormal, weight)
         );
     }
 
@@ -398,8 +246,6 @@ public:
     }
 
     virtual void estimateExpShapeCoeffs(const PointCloud& target) = 0;
-    virtual void estimateExpShapeCoeffs(const std::vector<Eigen::Vector3f> &target) = 0;
-
 
 protected:
     unsigned m_nIterations;
@@ -422,30 +268,12 @@ protected:
         return transformedPoints;
     }
 
-    std::vector<Vector3f> transformNormals(const std::vector<Vector3f>& sourceNormals, const Matrix4d& pose, double scale) {
-        std::vector<Vector3f> transformedNormals;
-        transformedNormals.reserve(sourceNormals.size());
-
-        const auto rotation = FaceModel::getInstance()->rotation;
-
-        for (const auto& normal : sourceNormals) {
-            Vector3d normalD = normal.cast<double>();
-            normalD *= scale;
-            Vector3d tmp = rotation.inverse().transpose() * normalD;
-            Vector3f tmpf = tmp.cast<float>();
-            transformedNormals.push_back(tmpf);
-        }
-
-        return transformedNormals;
-    }
-
     void pruneCorrespondences(const std::vector<Vector3f>& sourceNormals, const std::vector<Vector3f>& targetNormals, std::vector<Match>& matches) {
         const unsigned nPoints = sourceNormals.size();
-        int sum = 0;
+
         for (unsigned i = 0; i < nPoints; i++) {
             Match& match = matches[i];
             if (match.idx >= 0) {
-                sum++;
                 const auto& sourceNormal = sourceNormals[i];
                 const auto& targetNormal = targetNormals[match.idx];
 
@@ -455,7 +283,6 @@ protected:
                 }
             }
         }
-        std::cout << "sum: " << sum << std::endl;
     }
 };
 
@@ -490,11 +317,6 @@ public:
             }
 
             PointCloud faceModelPoints{faceMesh};
-            // for (size_t i = 0; i < faceModelPoints.getPoints().size(); ++i)
-            //         std::cout << "    " << faceModelPoints.getPoints()[i].x()
-            //       << " " << faceModelPoints.getPoints()[i].y()
-            //       << " " << faceModelPoints.getPoints()[i].z() << std::endl;
-
             
             auto matches = m_nearestNeighborSearch->queryMatches(faceModelPoints.getPoints());
             int matchCtr = 0;
@@ -530,18 +352,7 @@ public:
             std::cout << summary.BriefReport() << std::endl;
             //std::cout << summary.FullReport() << std::endl;
 
-            //update face model with these params
-            if(i == m_nIterations-1){
-                std::cout<<"-----------LAST ITERATION--------------"<<std::endl;
-                if(TRANSFER){
-                    expShapeCoeffIncrement.readExp();
-                    std::cout<<"-----------TRANSFER--------------"<<std::endl;
-                }
-                else{
-                    std::cout<<"------EXPRESSION WRITE-----------"<<std::endl;
-                    expShapeCoeffIncrement.writeExp();
-                }
-            }
+
             faceModel->expCoefAr = expShapeCoeffIncrement.getExpCoeff();        
             faceModel->shapeCoefAr = expShapeCoeffIncrement.getShapeCoeff();
 
@@ -560,76 +371,6 @@ public:
         faceModel->write_obj("result.obj",transformed_mesh);
 
         faceModel->save("face_1.dat");
-    }
-
-    virtual void estimateExpShapeCoeffs(const std::vector<Eigen::Vector3f> &target) override {
-        // Build the index of the FLANN tree (for fast nearest neighbor lookup).
-        
-        m_nearestNeighborSearch->buildIndex(target);
-
-        double incrementArrayExp[64];
-        double incrementArrayShape[80];
-
-        auto expShapeCoeffIncrement = ExpShapeCoeffIncrement<double>(incrementArrayExp, incrementArrayShape);
-        expShapeCoeffIncrement.setZero();
-
-        FaceModel* faceModel = FaceModel::getInstance();
-        for (int i = 0; i < m_nIterations; ++i) {
-            // Compute the matches.
-            std::cout << "Matching points ..." << std::endl;
-            clock_t begin = clock();
-
-            
-            SimpleMesh faceMesh;
-            if (!faceMesh.loadMesh("transformed_model.off")) {
-                std::cout << "Mesh file wasn't read successfully at location: " << "transformed_model.off" << std::endl;
-            }
-
-            PointCloud faceModelPoints{faceMesh};
-            std::cout << " inside mesh " << faceModelPoints.getPoints()[faceModel->key_points[31]] << std::endl;
-            
-            
-            //auto matches = m_nearestNeighborSearch->queryMatches(faceModelPoints.getPoints());
-            auto matches = m_nearestNeighborSearch->queryMatches(faceModelPoints.getPoints());
-
-
-            clock_t end = clock();
-            double elapsedSecs = double(end - begin) / CLOCKS_PER_SEC;
-            std::cout << "Completed in " << elapsedSecs << " seconds." << std::endl;
-
-
-            int matchCtr = 0;
-            for(Match match : matches) {
-                if (match.idx >= 0)
-                   matchCtr++;
-            }
-            std::cout << "match count:" << matchCtr << std::endl;
-            // Prepare point-to-point and point-to-plane constraints.
-            ceres::Problem problem;
-            customPrepareConstraints(target, matches, expShapeCoeffIncrement, problem);
-
-            // Configure options for the solver.
-            ceres::Solver::Options options;
-            configureSolver(options);
-
-            // Run the solver (for one iteration).
-            ceres::Solver::Summary summary;
-            exit(0);
-            ceres::Solve(options, &problem, &summary);
-        
-            std::cout << summary.BriefReport() << std::endl;
-
-            //update face model with these params
-            faceModel->expCoefAr = expShapeCoeffIncrement.getExpCoeff();
-            faceModel->shapeCoefAr = expShapeCoeffIncrement.getShapeCoeff();
-
-            MatrixXd transformed_mesh;
-            transformed_mesh = faceModel->transform(faceModel->pose, faceModel->scale);
-            faceModel->write_off("../sample_face/transformed_model.off",transformed_mesh);
-
-            std::cout << "Optimization iteration done." << std::endl;
-        }
-        faceModel->write_off("../sample_face/result.off");
     }
 
 
@@ -658,7 +399,7 @@ private:
 
                 const int sourcePointIndex = i;
                 problem.AddResidualBlock(
-                        MyCustomConstraint::create(sourcePointIndex, targetPoint, match.weight),
+                        PointToPointConstraint::create(sourcePointIndex, targetPoint, match.weight),
                         nullptr,
                         expShapeCoeffIncrement.getExpCoeff(),
                         expShapeCoeffIncrement.getShapeCoeff()
@@ -669,7 +410,7 @@ private:
                     continue;
 
                 problem.AddResidualBlock(
-                    PointToPlaneConstr::create(sourcePointIndex, targetPoint, targetNormal, match.weight),
+                    PointToPlaneConstraint::create(sourcePointIndex, targetPoint, targetNormal, match.weight),
                     nullptr, 
                     expShapeCoeffIncrement.getExpCoeff(),
                     expShapeCoeffIncrement.getShapeCoeff()
@@ -678,36 +419,15 @@ private:
         }
 
         ceres::CostFunction* shape_cost = new ceres::AutoDiffCostFunction<ShapeCostFunction, 80, 80>(
-				new ShapeCostFunction(SHAPE_REGULARIZATION_WEIGHT)
+				new ShapeCostFunction(0.00001)
 				);
 		problem.AddResidualBlock(shape_cost, nullptr, expShapeCoeffIncrement.getShapeCoeff());
 
     
         ceres::CostFunction* expression_cost = new ceres::AutoDiffCostFunction<ExpressionCostFunction, 64, 64>(
-				new ExpressionCostFunction(EXPRESSION_REGULARIZATION_WEIGHT)
+				new ExpressionCostFunction(0.00005)
 				);
 		problem.AddResidualBlock(expression_cost, nullptr, expShapeCoeffIncrement.getExpCoeff());
 
-    }
-
-    void customPrepareConstraints(const std::vector<Vector3f> &targetPoints,
-                                  const std::vector<Match> matches,
-                                  const ExpShapeCoeffIncrement<double> &expShapeCoeffIncrement,
-                                  ceres::Problem &problem) const {
-        for (unsigned i = 0; i < 35709; ++i) {
-            const auto match = matches[i];
-            if (match.idx >= 0) {
-                const auto &targetPoint = targetPoints[match.idx];
-
-                const int sourcePointIndex = i;
-                problem.AddResidualBlock(
-                        MyCustomConstraint::create(sourcePointIndex, targetPoint, match.weight),
-                        nullptr,
-                        expShapeCoeffIncrement.getExpCoeff(),
-                        expShapeCoeffIncrement.getShapeCoeff()
-                );
-
-            }
-        }
     }
 };

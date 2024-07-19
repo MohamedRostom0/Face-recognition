@@ -13,13 +13,7 @@
 #include <pcl/common/transforms.h>
 
 
-#define SHOW_BUNNY_CORRESPONDENCES 0
-
-#define USE_POINT_TO_PLANE	0
-#define USE_LINEAR_ICP		0
-
-#define RUN_SHAPE_ICP		0
-#define RUN_SEQUENCE_ICP	1
+#define TRANSFER_EXPRESSIONS	0
 
 
 void transferExpression(const FaceModel& face1, FaceModel& face2) {
@@ -30,32 +24,25 @@ void transferExpression(const FaceModel& face1, FaceModel& face2) {
 
 int main() {
 
-    FaceModel* face1 = FaceModel::getInstance();
-    face1->load("face_1.dat");
+    if(TRANSFER_EXPRESSIONS){
+        FaceModel* face1 = FaceModel::getInstance();
+        face1->load("face_1.dat");
 
-    FaceModel* face2 = FaceModel::getInstance();
-    face2->load("face_2.dat");
+        FaceModel* face2 = FaceModel::getInstance();
+        face2->load("face_2.dat");
 
-    Eigen::VectorXd expCoefFace1 = face1->getExpressionCoefficients();
-    face2->setExpressionCoefficients(expCoefFace1);
+        Eigen::VectorXd expCoefFace1 = face1->getExpressionCoefficients();
+        face2->setExpressionCoefficients(expCoefFace1);
 
-    // Generate the updated mesh for face2
-    double* updatedMeshFace2 = face2->get_mesh();
-    Eigen::MatrixXd updatedMesh = face2->getAsEigenMatrix(updatedMeshFace2);
+        // Generate the updated mesh for face2
+        double* updatedMeshFace2 = face2->get_mesh();
+        Eigen::MatrixXd updatedMesh = face2->getAsEigenMatrix(updatedMeshFace2);
 
-    // Save the updated mesh to an OBJ file
-    face2->write_off("face2_updated.off", updatedMesh);
-    // Transfer expressions from face1 to face2
-    // Eigen::VectorXd expCoefFace1 = face1->getExpressionCoefficients();
-    // face2->setExpressionCoefficients(expCoefFace1);
-    // face2->write_off("output.off");
+        // Save the updated mesh to an off file
+        face2->write_off("face2_updated.off", updatedMesh);
 
-    // MatrixXd transformed_mesh0;
-    // transformed_mesh0 = face2->transform(face1->pose, face1->scale);
-    
-    // face2->write_off("output.off",transformed_mesh0);
-
-    return 0;
+        return 0; 
+    }
 
 	FaceModel* model = FaceModel::getInstance();
 
@@ -171,17 +158,6 @@ int main() {
     std::vector<int> x_val;
     std::vector<int> y_val;
 
-    // for (const auto& point : keypoints_2d) {
-    //     int x = point.first;
-    //     int y = point.second;
-    //     pcl::PointXYZ keypoint = cloud.at(x / 2, y / 2);
-
-    //     x_val.push_back(x);
-    //     y_val.push_back(y);
-    //     keypoints.push_back(keypoint);
-    //     Eigen::Vector3f vec(keypoint.x, keypoint.y, keypoint.z);
-    //     keypoints_vectors.push_back(vec);
-    // }
     for (const auto& point : keypoints_2d) {
         int x = point.first;
         int y = point.second;
@@ -215,10 +191,7 @@ int main() {
     int ind = 0;
     for (int y = 0; y < 540; y++) {
         for (int x = 0; x < 960; x++) {
-            // std::cout << "shakek" << std::endl;
-            // std::cout << cloud.at(x, y) << std::endl;
             cropped_depth_map[ind] = cloud.at(x, y).z;
-            // std::cout << "5alas 7asal 5eer" << std::endl;
             ind++;
         }
     }
@@ -253,9 +226,6 @@ int main() {
 
     
     targetPoints = keypoints_vectors;
-    // for(int i = 0; i < targetPoints.size() ; ++i){
-    //     std::cout << "-> " << targetPoints[i] << std::endl;
-    // }
 
 	std::vector<Vector3f> sourcePoints = model->key_vectors;
 
@@ -322,14 +292,6 @@ int main() {
     std::cout << target_cloud.getPoints()[10] << std::endl; 
     std::cout << faceModelPoints.getPoints()[10] << std::endl; 
 	
-
-	// Estimate the pose from source to target mesh with ICP optimization.
-	// CeresICPOptimizer* optimizer = nullptr;
-	// optimizer = new CeresICPOptimizer();
-	
-    // optimizer->setMatchingMaxDistance(0.000005f);
-    // optimizer->setNbOfIterations(10);
-	
 	// optimizer->estimateExpShapeCoeffs(target_cloud);
     CeresICPOptimizer * optimizer = nullptr;
     optimizer = new CeresICPOptimizer();
@@ -337,15 +299,6 @@ int main() {
     optimizer->setMatchingMaxDistance(0.000005f);
     optimizer->setNbOfIterations(5);
     optimizer->estimateExpShapeCoeffs(cropped_cloud);
-
-	
-	// optimizer->estimatePose(faceModelPoints, target_cloud, estimatedPose);
-	
-	// SimpleMesh resultingMesh = SimpleMesh::joinMeshes(sourceMesh, targetMesh, estimatedPose);
-	// resultingMesh.writeMesh(std::string("bunny_icp.off"));
-
-	
-	// std::cout << estimatedPose << std::endl;
 
 	return 0;
 }
